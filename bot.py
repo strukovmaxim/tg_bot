@@ -6,8 +6,8 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # --- Конфиг ---
 API_TOKEN = "7638897879:AAGhxCf1nBPNBmVWiXCKjvqdAJWBsj-Jc0k"
-ADMIN_ID = 136480596                      # твой Telegram ID
-ADMIN_CHAT_ID = 0                         # если нужен чат для уведомлений, поставь ID (например, -1001234567890)
+ADMIN_ID = 136480596
+ADMIN_CHAT_ID = 0  # если нужен чат для уведомлений, вставь ID группы
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -145,12 +145,11 @@ async def show_item(callback: types.CallbackQuery):
     await callback.message.edit_text(text, reply_markup=kb.as_markup())
     await callback.answer()
 
-# --- Добавление в корзину (возврат к списку товаров категории) ---
+# --- Добавление в корзину ---
 @dp.callback_query(lambda c: c.data.startswith("add_"))
 async def add_to_cart(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     iid = int(callback.data.split("_")[1])
-
     carts.setdefault(user_id, {})
     carts[user_id][iid] = carts[user_id].get(iid, 0) + 1
 
@@ -209,7 +208,7 @@ async def clear_cart(callback: types.CallbackQuery):
     await callback.answer("Корзина очищена!")
     await show_cart(callback)
 
-# --- Оформление заказа (автозаполнение + комментарий) ---
+# --- Оформление заказа (исправленный блок) ---
 @dp.callback_query(lambda c: c.data == "checkout")
 async def checkout(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -236,11 +235,7 @@ async def checkout(callback: types.CallbackQuery):
 async def use_saved_contacts(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     saved = users_data[user_id]
-    orders_data[user_id] = {
-        "name": saved["name"],
-        "phone": saved["phone"],
-        "step": "rental_period"
-    }
+    orders_data[user_id] = {"name": saved["name"], "phone": saved["phone"], "step": "rental_period"}
     await callback.message.answer("Введите период аренды (например: с 25.08 по 28.08):")
     await callback.answer()
 
@@ -251,7 +246,7 @@ async def new_contacts(callback: types.CallbackQuery):
     await callback.message.answer("Введите ваше Имя и Фамилию, а так же ваш телеграм для связи")
     await callback.answer()
 
-@dp.message()
+@dp.message(lambda m: m.text)
 async def handle_order_steps(message: types.Message):
     user_id = message.from_user.id
     if user_id not in orders_data:
@@ -276,20 +271,20 @@ async def handle_order_steps(message: types.Message):
 
     elif step == "comment":
         orders_data[user_id]["comment"] = message.text.strip()
+        orders_data[user_id]["step"] = "review"
         cart_text = get_cart_text(user_id)
-        order_summary = (
+        summary = (
             f"📦 Проверьте заказ:\n\n{cart_text}\n\n"
             f"Имя/ник: {orders_data[user_id]['name']}\n"
             f"Телефон: {orders_data[user_id]['phone']}\n"
             f"Аренда: {orders_data[user_id]['rental_period']}\n"
             f"Комментарий: {orders_data[user_id]['comment']}"
         )
-        orders_data[user_id]["step"] = "review"
         kb = InlineKeyboardBuilder()
         kb.button(text="✅ Подтвердить", callback_data="confirm_order")
         kb.button(text="❌ Отмена", callback_data="cancel_order")
         kb.adjust(2)
-        await message.answer(order_summary, reply_markup=kb.as_markup())
+        await message.answer(summary, reply_markup=kb.as_markup())
 
 @dp.callback_query(lambda c: c.data == "confirm_order")
 async def confirm_order(callback: types.CallbackQuery):
@@ -298,7 +293,6 @@ async def confirm_order(callback: types.CallbackQuery):
     if not data or data.get("step") != "review":
         await callback.answer("Действие недоступно.", show_alert=True)
         return
-
     cart_text = get_cart_text(user_id)
     final_text = (
         f"📦 Новый заказ:\n\n{cart_text}\n\n"
@@ -307,7 +301,6 @@ async def confirm_order(callback: types.CallbackQuery):
         f"Аренда: {data['rental_period']}\n"
         f"Комментарий: {data['comment']}"
     )
-
     order = {
         "user_id": user_id,
         "name": data["name"],
@@ -318,28 +311,11 @@ async def confirm_order(callback: types.CallbackQuery):
         "status": "pending"
     }
     all_orders.append(order)
-
-    # отправка админу и (опц.) в чат
     await send_order_to_admin(order, final_text)
-
     await callback.message.edit_text("Спасибо! Заказ отправлен админу. ✅")
     carts[user_id] = {}
     orders_data.pop(user_id, None)
     await callback.answer()
-
-async def send_order_to_admin(order: dict, text: str):
-    kb = InlineKeyboardBuilder()
-    kb.button(text="✅ Подтвердить", callback_data=f"admin_confirm_{order['user_id']}")
-    kb.button(text="❌ Отклонить", callback_data=f"admin_decline_{order['user_id']}")
-    kb.adjust(2)
-    # личка админу
-    await bot.send_message(ADMIN_ID, text, reply_markup=kb.as_markup())
-    # дублирование в чат (без кнопок)
-    if ADMIN_CHAT_ID:
-        try:
-            await bot.send_message(ADMIN_CHAT_ID, text)
-        except Exception:
-            pass
 
 @dp.callback_query(lambda c: c.data == "cancel_order")
 async def cancel_order(callback: types.CallbackQuery):
@@ -347,118 +323,18 @@ async def cancel_order(callback: types.CallbackQuery):
     await callback.message.edit_text("Оформление отменено.", reply_markup=main_menu(callback.from_user.id))
     await callback.answer()
 
-# --- История заказов пользователя ---
-@dp.message(Command("myorders"))
-async def my_orders(message: types.Message):
-    user_id = message.from_user.id
-    user_orders = [o for o in all_orders if o["user_id"] == user_id]
-    if not user_orders:
-        await message.answer("📭 У вас пока нет заказов.")
-        return
-    text = "📋 Ваши заказы:\n\n"
-    for order in user_orders[-5:]:
-        total = sum(id_to_item[iid]["price"] * qty for iid, qty in order["items"].items())
-        nal, beznal = total, int(total * 1.09)
-        text += (
-            f"📦 {order['period']}\n"
-            f"💰 Наличные: {nal}₽\n"
-            f"💳 Безнал (+9%): {beznal}₽\n"
-            f"Статус: {order['status']}\n"
-            "------\n"
-        )
-    await message.answer(text)
-
-@dp.callback_query(lambda c: c.data == "my_orders")
-async def show_my_orders(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    user_orders = [o for o in all_orders if o["user_id"] == user_id]
-    if not user_orders:
-        await callback.message.edit_text("📭 У вас пока нет заказов.", reply_markup=main_menu(user_id))
-        await callback.answer()
-        return
-    text = "📋 Ваши заказы:\n\n"
-    for order in user_orders[-5:]:
-        total = sum(id_to_item[iid]["price"] * qty for iid, qty in order["items"].items())
-        nal, beznal = total, int(total * 1.09)
-        text += (
-            f"📦 {order['period']}\n"
-            f"💰 Наличные: {nal}₽\n"
-            f"💳 Безнал (+9%): {beznal}₽\n"
-            f"Статус: {order['status']}\n"
-            "------\n"
-        )
-    await callback.message.edit_text(text, reply_markup=main_menu(user_id))
-    await callback.answer()
-
-# --- Админ: подтверждение/отклонение ---
-@dp.callback_query(lambda c: c.data.startswith("admin_confirm_"))
-async def admin_confirm(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("Недостаточно прав.", show_alert=True)
-        return
-
-    user_id = int(callback.data.split("_")[2])
-    for order in reversed(all_orders):
-        if order["user_id"] == user_id and order["status"] == "pending":
-            order["status"] = "confirmed"
-
-            lines, total = ["✅ Ваш заказ подтверждён!\n"], 0
-            for iid, qty in order["items"].items():
-                item = id_to_item[iid]
-                lines.append(f"- {item['name']} × {qty} — {item['price']*qty}₽")
-                total += item["price"] * qty
-            nal, beznal = total, int(total * 1.09)
-            lines.append(f"\n💰 Наличные: {nal}₽")
-            lines.append(f"💳 Безнал (+9%): {beznal}₽")
-            lines.append(f"📅 Период: {order['period']}")
-            lines.append(f"📝 Комментарий: {order['comment']}")
-
-            # кнопка только в финальном чеке
-            kb = InlineKeyboardBuilder()
-            kb.button(text="⬅️ Главное меню", callback_data="back_to_main")
-
-            await bot.send_message(user_id, "\n".join(lines), reply_markup=kb.as_markup())
-            await callback.message.edit_text(callback.message.text + "\n\n✅ Подтверждено")
-            await callback.answer("Заказ подтверждён.")
-            return
-    await callback.answer("Заказ не найден или уже обработан.", show_alert=True)
-
-@dp.callback_query(lambda c: c.data.startswith("admin_decline_"))
-async def admin_decline(callback: types.CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("Недостаточно прав.", show_alert=True)
-        return
-
-    user_id = int(callback.data.split("_")[2])
-    for order in reversed(all_orders):
-        if order["user_id"] == user_id and order["status"] == "pending":
-            order["status"] = "declined"
-            await bot.send_message(user_id, "❌ Ваш заказ отклонён админом.")
-            await callback.message.edit_text(callback.message.text + "\n\n❌ Отклонено")
-            await callback.answer("Заказ отклонён.")
-            return
-    await callback.answer("Заказ не найден или уже обработан.", show_alert=True)
-
-@dp.message(Command("orders"))
-async def list_orders(message: types.Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    if not all_orders:
-        await message.answer("Заказов пока нет.")
-        return
-    text = "📋 Последние заказы:\n\n"
-    for order in all_orders[-10:]:
-        total = sum(id_to_item[iid]["price"] * qty for iid, qty in order["items"].items())
-        nal, beznal = total, int(total * 1.09)
-        text += (
-            f"👤 {order['name']} | {order['phone']}\n"
-            f"📅 {order['period']}\n"
-            f"💰 Наличные: {nal}₽ | 💳 Безнал: {beznal}₽\n"
-            f"📝 Комментарий: {order['comment']}\n"
-            f"Статус: {order['status']}\n"
-            "------\n"
-        )
-    await message.answer(text)
+# --- Админ функции ---
+async def send_order_to_admin(order: dict, text: str):
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✅ Подтвердить", callback_data=f"admin_confirm_{order['user_id']}")
+    kb.button(text="❌ Отклонить", callback_data=f"admin_decline_{order['user_id']}")
+    kb.adjust(2)
+    await bot.send_message(ADMIN_ID, text, reply_markup=kb.as_markup())
+    if ADMIN_CHAT_ID:
+        try:
+            await bot.send_message(ADMIN_CHAT_ID, text)
+        except Exception:
+            pass
 
 # --- Запуск ---
 async def main():
