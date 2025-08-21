@@ -1,10 +1,8 @@
-# catalog.py
 from aiogram import types, F
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from keyboards import main_menu
 from data import catalog, id_to_item, carts
 from cart import get_cart_text
-from config import ADMIN_ID
 
 def find_category_by_item(iid: int) -> str | None:
     for cat, items in catalog.items():
@@ -20,7 +18,7 @@ def register_catalog_handlers(dp):
         await callback.message.edit_text("Напишите админу: @maximstrukov", reply_markup=main_menu(callback.from_user.id))
         await callback.answer()
 
-    # Кнопка "Главное меню"
+    # Главное меню
     @dp.callback_query(F.data == "back_to_main")
     async def back_to_main(callback: types.CallbackQuery):
         await callback.message.edit_text("Главное меню:", reply_markup=main_menu(callback.from_user.id))
@@ -64,7 +62,7 @@ def register_catalog_handlers(dp):
         await callback.message.edit_text(text, reply_markup=kb.as_markup())
         await callback.answer()
 
-    # Добавление в корзину (возвращаемся к списку товаров категории)
+    # Добавление в корзину
     @dp.callback_query(F.data.startswith("add_"))
     async def add_to_cart(callback: types.CallbackQuery):
         user_id = callback.from_user.id
