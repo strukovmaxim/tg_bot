@@ -208,7 +208,7 @@ async def clear_cart(callback: types.CallbackQuery):
     await callback.answer("Корзина очищена!")
     await show_cart(callback)
 
-# --- Оформление заказа (исправленный блок) ---
+# --- Оформление заказа ---
 @dp.callback_query(lambda c: c.data == "checkout")
 async def checkout(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -335,6 +335,66 @@ async def send_order_to_admin(order: dict, text: str):
             await bot.send_message(ADMIN_CHAT_ID, text)
         except Exception:
             pass
+
+@dp.callback_query(lambda c: c.data.startswith("admin_confirm_"))
+async def admin_confirm(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+    uid = int(callback.data.split("_")[2])
+    for order in reversed(all_orders):
+        if order["user_id"] == uid and order["status"] == "pending":
+            order["status"] = "confirmed"
+            nal, beznal = cart_totals(order["items"])
+            cart_text = get_cart_text(uid)
+            summary = (
+                f"✅ Ваш заказ подтверждён!\n\n{cart_text}\n\n"
+                f"Имя/ник: {order['name']}\n"
+                f"Телефон: {order['phone']}\n"
+                f"Аренда: {order['period']}\n"
+                f"Комментарий: {order['comment']}\n\n"
+                f"💰 Наличные: {nal}₽\n💳 Безнал (+9%): {beznal}₽"
+            )
+            kb = InlineKeyboardBuilder()
+            kb.button(text="⬅️ Главное меню", callback_data="back_to_main")
+            await bot.send_message(uid, summary, reply_markup=kb.as_markup())
+            await callback.message.edit_text("Заказ подтверждён ✅")
+            await callback.answer()
+            return
+    await callback.answer("Заказ не найден.", show_alert=True)
+
+@dp.callback_query(lambda c: c.data.startswith("admin_decline_"))
+async def admin_decline(callback: types.CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("Недостаточно прав.", show_alert=True)
+        return
+    uid = int(callback.data.split("_")[2])
+    for order in reversed(all_orders):
+        if order["user_id"] == uid and order["status"] == "pending":
+            order["status"] = "declined"
+            await bot.send_message(uid, "❌ Ваш заказ отклонён администратором.")
+            await callback.message.edit_text("Заказ отклонён ❌")
+            await callback.answer()
+            return
+    await callback.answer("Заказ не найден.", show_alert=True)
+
+# --- История заказов ---
+@dp.callback_query(lambda c: c.data == "my_orders")
+async def my_orders(callback: types.CallbackQuery):
+    uid = callback.from_user.id
+    user_orders = [o for o in all_orders if o["user_id"] == uid]
+    if not user_orders:
+        await callback.message.edit_text("У вас пока нет заказов.", reply_markup=main_menu(uid))
+    else:
+        lines = ["📋 Ваши заказы:\n"]
+        for i, order in enumerate(user_orders, 1):
+            nal, beznal = cart_totals(order["items"])
+            lines.append(
+                f"{i}. {order['period']} — {order['status']}\n"
+                f"💰 {nal}₽ | 💳 {beznal}₽\n"
+            )
+        await callback.message.edit_text("\n".join(lines), reply_markup=main_menu(uid))
+    await callback.answer()
 
 # --- Запуск ---
 async def main():
