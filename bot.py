@@ -123,6 +123,16 @@ async def show_item(callback: types.CallbackQuery):
     await callback.message.edit_text(text, reply_markup=kb.as_markup())
     await callback.answer()
 
+# --- Добавление в корзину ---
+@dp.callback_query(lambda c: c.data.startswith("add_"))
+async def add_to_cart(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    iid = int(callback.data.split("_")[1])
+    if user_id not in carts:
+        carts[user_id] = {}
+    carts[user_id][iid] = carts[user_id].get(iid, 0) + 1
+    await callback.answer(f"{id_to_item[iid]['name']} добавлен в корзину ✅", show_alert=True)
+
 # --- Корзина ---
 @dp.callback_query(lambda c: c.data == "show_cart")
 async def show_cart(callback: types.CallbackQuery):
@@ -159,10 +169,6 @@ async def dec_item(callback: types.CallbackQuery):
         if carts[uid][iid] <= 0:
             del carts[uid][iid]
     await show_cart(callback)
-
-# --- Оформление заказа ---
-# (оставим как было — с автосохранением контактов и комментарием)
-# ...
 
 # --- Подтверждение заказа админом ---
 @dp.callback_query(lambda c: c.data.startswith("admin_confirm_"))
