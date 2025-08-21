@@ -33,8 +33,7 @@ catalog = {
 
 id_to_item = {iid: item for cat in catalog.values() for iid, item in cat.items()}
 
-# --- Данные пользователей ---
-carts: dict[int, dict[int, int]] = {}
-orders_data: dict[int, dict] = {}
-all_orders: list[dict] = []
-users_data: dict[int, dict] = {}
+# --- Данные пользователей и заказы (память в рантайме) ---
+carts: dict[int, dict[int, int]] = {}      # user_id -> {item_id: qty}
+orders_data: dict[int, dict] = {}          # user_id -> {name, phone, step, rental_period, comment}
+all_orders: list[dict] = []                # список всех заказов
