@@ -3,7 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import Bot
 from datetime import datetime
 
-from data import carts, id_to_item, orders_data, all_orders
+from data import carts, orders_data, all_orders
 from cart import get_cart_text, cart_totals
 from config import ADMIN_ID
 
@@ -107,7 +107,7 @@ def register_order_handlers(dp):
 
         # текст корзины
         nal, beznal = cart_totals(order["items"])
-        cart_text = get_cart_text(uid)
+        cart_text = get_cart_text(uid, order["items"])
 
         # текст для админа
         admin_text = (
@@ -126,7 +126,7 @@ def register_order_handlers(dp):
         kb.adjust(2)
         await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb.as_markup())
 
-        # сообщение пользователю — теперь с полным заказом
+        # сообщение пользователю — полный чек
         user_text = (
             f"Спасибо! Заказ отправлен админу ✅\n\n"
             f"📦 Ваш заказ:\n\n"
@@ -139,7 +139,7 @@ def register_order_handlers(dp):
         )
         await callback.message.edit_text(user_text)
 
-        # очистка корзины, но контакты остаются
+        # очистка корзины, но контакты оставляем
         carts[uid] = {}
         if uid in orders_data:
             orders_data[uid].pop("step", None)
