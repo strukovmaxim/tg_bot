@@ -1,4 +1,3 @@
-# handlers.py
 from catalog import register_catalog_handlers
 from orders import register_order_handlers
 from admin import register_admin_handlers
@@ -14,5 +13,5 @@ def register_handlers(dp):
     register_admin_handlers(dp)
     # 4) история заказов
     register_history_handlers(dp)
-    # 5) /start и fallback — в САМОМ КОНЦЕ
+    # 5) /start + fallback (в самом конце)
     register_start_handlers(dp)
