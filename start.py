@@ -4,7 +4,6 @@ from keyboards import main_menu
 from data import orders_data
 
 def register_start_handlers(dp):
-    # /start — всегда отвечает
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
         await message.answer(
@@ -14,8 +13,8 @@ def register_start_handlers(dp):
             reply_markup=main_menu(message.from_user.id)
         )
 
-    # fallback на любой текст, если пользователь НЕ в процессе оформления
-    @dp.message(lambda m: m.text and m.from_user.id not in orders_data and not m.entities)
+    # fallback — ставим в самый конец, только на чистый текст
+    @dp.message(lambda m: m.text and not m.text.startswith("/") and m.from_user.id not in orders_data)
     async def fallback(message: types.Message):
         await message.answer(
             "Не понял сообщение 🤔\n\nВыберите действие из меню 👇",
