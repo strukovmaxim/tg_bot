@@ -18,7 +18,7 @@ def register_order_handlers(dp):
             await callback.answer("Корзина пуста!", show_alert=True)
             return
 
-        if user_id in orders_data and "name" in orders_data[user_id]:
+        if user_id in orders_data and "name" in orders_data[user_id] and "phone" in orders_data[user_id]:
             # используем сохранённые контакты
             await callback.message.answer(
                 "Введите период аренды с временем (например: 01.09 10:00 — 03.09 19:00):"
@@ -100,7 +100,7 @@ def register_order_handlers(dp):
             "phone": data.get("phone"),
             "period": data.get("rental_period"),
             "comment": data.get("comment"),
-            "status": "pending",
+            "status": "⏳ В обработке",
             "created_at": datetime.now().strftime("%d.%m.%Y %H:%M")
         }
         all_orders.append(order)
@@ -139,15 +139,22 @@ def register_order_handlers(dp):
         )
         await callback.message.edit_text(user_text)
 
-        # очистка корзины
+        # очистка корзины, но контакты остаются
         carts[uid] = {}
-        orders_data.pop(uid, None)
+        if uid in orders_data:
+            orders_data[uid].pop("step", None)
+            orders_data[uid].pop("rental_period", None)
+            orders_data[uid].pop("comment", None)
+
         await callback.answer()
 
     # отмена заказа
     @dp.callback_query(lambda c: c.data == "cancel_order")
     async def cancel_order(callback: types.CallbackQuery):
         uid = callback.from_user.id
-        orders_data.pop(uid, None)
+        if uid in orders_data:
+            orders_data[uid].pop("step", None)
+            orders_data[uid].pop("rental_period", None)
+            orders_data[uid].pop("comment", None)
         await callback.message.edit_text("Заказ отменён ❌")
         await callback.answer()
