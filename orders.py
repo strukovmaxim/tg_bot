@@ -1,102 +1,143 @@
 from aiogram import types
+from aiogram.filters import StateFilter
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from data import carts, orders_data, all_orders, users_data, id_to_item
-from cart import get_cart_text, cart_totals
-from keyboards import main_menu
-from config import ADMIN_ID
 from aiogram import Bot
+
+from data import carts, id_to_item, orders_data, all_orders
+from cart import get_cart_text, cart_totals
+from config import ADMIN_ID
+
+# Состояния для оформления заказа
+class OrderStates(StatesGroup):
+    name = State()
+    phone = State()
+    rental_period = State()
+    comment = State()
+    review = State()
+
 
 def register_order_handlers(dp):
 
+    # checkout из корзины
     @dp.callback_query(lambda c: c.data == "checkout")
-    async def checkout(callback: types.CallbackQuery):
-        uid = callback.from_user.id
-        if uid not in carts or not carts[uid]:
-            await callback.answer("Корзина пуста.", show_alert=True)
+    async def checkout(callback: types.CallbackQuery, state: FSMContext):
+        user_id = callback.from_user.id
+        if not carts.get(user_id):
+            await callback.answer("Корзина пуста!", show_alert=True)
             return
-        if uid in users_data:
-            kb = InlineKeyboardBuilder()
-            kb.button(text="✅ Да", callback_data="use_saved_contacts")
-            kb.button(text="✏️ Ввести заново", callback_data="enter_name")
-            kb.adjust(1)
-            await callback.message.edit_text("Использовать сохранённые контакты?", reply_markup=kb.as_markup())
-        else:
-            orders_data[uid] = {"step": "name"}
-            await callback.message.edit_text("Введите ваше Имя и Фамилию, а так же ваш телеграм для связи")
-        await callback.answer()
 
-    @dp.callback_query(lambda c: c.data == "use_saved_contacts")
-    async def use_saved(callback: types.CallbackQuery):
-        uid = callback.from_user.id
-        orders_data[uid] = {"step": "rental_period"}
-        await callback.message.edit_text("Введите период аренды (например: 1-3 сентября)")
-        await callback.answer()
-
-    @dp.callback_query(lambda c: c.data == "enter_name")
-    async def enter_name(callback: types.CallbackQuery):
-        uid = callback.from_user.id
-        orders_data[uid] = {"step": "name"}
-        await callback.message.edit_text("Введите ваше Имя и Фамилию, а так же ваш телеграм для связи")
-        await callback.answer()
-
-    @dp.message(lambda m: m.text and m.from_user.id in orders_data)
-    async def handle_order_steps(message: types.Message, bot: Bot):
-        uid = message.from_user.id
-        step = orders_data[uid].get("step")
-        if step == "name":
-            orders_data[uid]["name"] = message.text
-            orders_data[uid]["step"] = "phone"
-            await message.answer("Введите ваш контактный телефон")
-        elif step == "phone":
-            orders_data[uid]["phone"] = message.text
-            orders_data[uid]["step"] = "rental_period"
-            await message.answer("Введите период аренды (например: 1-3 сентября)")
-        elif step == "rental_period":
-            orders_data[uid]["period"] = message.text
-            orders_data[uid]["step"] = "comment"
-            await message.answer("Добавьте комментарий к заказу (или напишите «нет»)")
-        elif step == "comment":
-            orders_data[uid]["comment"] = message.text
-            cart = carts.get(uid, {})
-            nal, beznal = cart_totals(cart)
-            summary = (
-                f"Ваш заказ:\n\n{get_cart_text(uid)}\n\n"
-                f"Имя/ник: {orders_data[uid]['name']}\n"
-                f"Телефон: {orders_data[uid]['phone']}\n"
-                f"Аренда: {orders_data[uid]['period']}\n"
-                f"Комментарий: {orders_data[uid]['comment']}\n\n"
-                f"💰 Наличные: {nal}₽\n💳 Безнал (+9%): {beznal}₽"
+        if user_id in orders_data and "name" in orders_data[user_id]:
+            # используем сохранённые контакты
+            await callback.message.answer(
+                "Введите период аренды с временем (например: 01.09 10:00 — 03.09 19:00):"
             )
-            kb = InlineKeyboardBuilder()
-            kb.button(text="✅ Подтвердить", callback_data="confirm_order")
-            kb.button(text="❌ Отмена", callback_data="cancel_order")
-            kb.adjust(1)
-            await message.answer(summary, reply_markup=kb.as_markup())
-            orders_data[uid]["step"] = "review"
+            orders_data[user_id]["step"] = "rental_period"
+        else:
+            # новые контакты
+            await callback.message.answer("Введите ваше Имя и Фамилию, а так же ваш телеграм для связи:")
+            orders_data[user_id] = {"step": "name"}
+        await callback.answer()
 
+    # ввод данных по шагам
+    @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "name")
+    async def process_name(message: types.Message):
+        user_id = message.from_user.id
+        orders_data[user_id]["name"] = message.text.strip()
+        orders_data[user_id]["step"] = "phone"
+        await message.answer("Введите ваш номер телефона:")
+
+    @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "phone")
+    async def process_phone(message: types.Message):
+        user_id = message.from_user.id
+        orders_data[user_id]["phone"] = message.text.strip()
+        orders_data[user_id]["step"] = "rental_period"
+        await message.answer("Введите период аренды с временем (например: 01.09 10:00 — 03.09 19:00):")
+
+    @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "rental_period")
+    async def process_period(message: types.Message):
+        user_id = message.from_user.id
+        orders_data[user_id]["rental_period"] = message.text.strip()
+        orders_data[user_id]["step"] = "comment"
+        await message.answer(
+            "Добавьте комментарий к заказу (например: нужна доставка, нужен механик, точка встречи). "
+            "Если ничего не нужно — напишите «-»."
+        )
+
+    @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "comment")
+    async def process_comment(message: types.Message):
+        user_id = message.from_user.id
+        orders_data[user_id]["comment"] = message.text.strip()
+        orders_data[user_id]["step"] = "review"
+
+        nal, beznal = cart_totals(carts[user_id])
+        text = (
+            f"📦 Ваш заказ:\n\n{get_cart_text(user_id)}\n\n"
+            f"Имя: {orders_data[user_id]['name']}\n"
+            f"Телефон: {orders_data[user_id]['phone']}\n"
+            f"🕒 Период: {orders_data[user_id]['rental_period']}\n"
+            f"📝 Комментарий: {orders_data[user_id]['comment']}\n\n"
+            f"Итого: 💰 {nal}₽ | 💳 {beznal}₽"
+        )
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Подтвердить заказ", callback_data="confirm_order")
+        kb.button(text="❌ Отменить", callback_data="cancel_order")
+        kb.adjust(1)
+        await message.answer(text, reply_markup=kb.as_markup())
+
+    # подтверждение заказа
     @dp.callback_query(lambda c: c.data == "confirm_order")
     async def confirm_order(callback: types.CallbackQuery, bot: Bot):
         uid = callback.from_user.id
+        data = orders_data.get(uid)
+        if not data or data.get("step") != "review":
+            await callback.answer("Действие недоступно.", show_alert=True)
+            return
+
+        # собираем заказ
         order = {
             "user_id": uid,
             "items": carts.get(uid, {}).copy(),
-            "name": orders_data[uid].get("name"),
-            "phone": orders_data[uid].get("phone"),
-            "period": orders_data[uid].get("period"),
-            "comment": orders_data[uid].get("comment"),
+            "name": data.get("name"),
+            "phone": data.get("phone"),
+            "period": data.get("rental_period"),
+            "comment": data.get("comment"),
             "status": "pending"
         }
         all_orders.append(order)
-        users_data[uid] = {"name": order["name"], "phone": order["phone"]}
-        await bot.send_message(ADMIN_ID, f"📦 Новый заказ от {order['name']}\n\n{get_cart_text(uid)}")
+
+        # текст для админа
+        nal, beznal = cart_totals(order["items"])
+        admin_text = (
+            f"📦 Новый заказ от {order['name']} (id {uid})\n"
+            f"📞 {order['phone']}\n"
+            f"🕒 Период: {order['period']}\n"
+            f"📝 Комментарий: {order['comment']}\n\n"
+            f"{get_cart_text(uid)}\n\n"
+            f"Итого: 💰 {nal}₽ | 💳 {beznal}₽"
+        )
+
+        # кнопки админу
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Подтвердить", callback_data=f"admin_confirm_{uid}")
+        kb.button(text="❌ Отклонить", callback_data=f"admin_decline_{uid}")
+        kb.adjust(2)
+
+        await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb.as_markup())
+
+        # сообщение пользователю
+        await callback.message.edit_text("Спасибо! Заказ отправлен админу. ✅")
+
+        # очистка
         carts[uid] = {}
-        await callback.message.edit_text("Спасибо! Заказ отправлен админу ✅", reply_markup=main_menu(uid))
         orders_data.pop(uid, None)
         await callback.answer()
 
+    # отмена заказа
     @dp.callback_query(lambda c: c.data == "cancel_order")
     async def cancel_order(callback: types.CallbackQuery):
         uid = callback.from_user.id
         orders_data.pop(uid, None)
-        await callback.message.edit_text("❌ Заказ отменён.", reply_markup=main_menu(uid))
+        await callback.message.edit_text("Заказ отменён ❌")
         await callback.answer()
