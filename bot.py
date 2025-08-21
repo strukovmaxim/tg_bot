@@ -5,8 +5,8 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-API_TOKEN = "7638897879:AAGhxCf1nBPNBmVWiXCKjvqdAJWBsj-Jc0k"
-ADMIN_ID = 136480596  # твой Telegram ID
+API_TOKEN = os.environ["API_TOKEN"]
+ADMIN_ID = int(os.environ["ADMIN_ID"])
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
@@ -45,40 +45,43 @@ catalog = {
     },
 }
 
-# Корзины: user_id → { item_id: count }
-carts = {}
-orders_data = {}
+# Быстрый индекс item_id -> item (для удобства)
+id_to_item = {}
+for cat_items in catalog.values():
+    for iid, item in cat_items.items():
+        id_to_item[iid] = item
 
-# Подсчёт содержимого корзины
-def get_cart_summary(user_id):
+# Корзины: user_id → { item_id: count }
+carts: dict[int, dict[int, int]] = {}
+# Временные данные оформления: user_id → {...}
+orders_data: dict[int, dict] = {}
+
+# Сводка корзины (кол-во позиций и сумма)
+def get_cart_summary(user_id: int) -> tuple[int, int]:
     cart = carts.get(user_id, {})
     total_items = sum(cart.values())
     total_price = 0
-    for category, items in catalog.items():
-        for item_id, item in items.items():
-            if item_id in cart:
-                total_price += item["price"] * cart[item_id]
+    for iid, qty in cart.items():
+        total_price += id_to_item[iid]["price"] * qty
     return total_items, total_price
 
 # Текст корзины
-def get_cart_text(user_id):
+def get_cart_text(user_id: int) -> str:
     cart = carts.get(user_id, {})
     if not cart:
         return "🛒 Корзина пуста."
-    text = "🛒 Ваша корзина:\n\n"
+    lines = ["🛒 Ваша корзина:\n"]
     total = 0
-    for category, items in catalog.items():
-        for item_id, item in items.items():
-            if item_id in cart:
-                qty = cart[item_id]
-                price = item["price"] * qty
-                text += f"- {item['name']} × {qty} — {price}₽\n"
-                total += price
-    text += f"\nИтого: {total}₽"
-    return text
+    for iid, qty in cart.items():
+        item = id_to_item[iid]
+        price = item["price"] * qty
+        lines.append(f"- {item['name']} × {qty} — {price}₽")
+        total += price
+    lines.append(f"\nИтого: {total}₽")
+    return "\n".join(lines)
 
 # Главное меню
-def main_menu(user_id):
+def main_menu(user_id: int):
     items, price = get_cart_summary(user_id)
     kb = InlineKeyboardBuilder()
     kb.button(text="📂 Категории", callback_data="menu_categories")
@@ -146,14 +149,25 @@ async def show_cart(callback: types.CallbackQuery):
     text = get_cart_text(user_id)
     kb = InlineKeyboardBuilder()
     cart = carts.get(user_id, {})
-    for item_id, qty in cart.items():
-        # кнопки ➕ ➖
-        kb.button(text=f"➕ {catalog[next(k for k,v in catalog.items() if item_id in v)][item_id]['name']}", callback_data=f"inc_{item_id}")
-        kb.button(text=f"➖", callback_data=f"dec_{item_id}")
-    kb.button(text="✅ Оформить заказ", callback_data="checkout")
-    kb.button(text="🗑 Очистить корзину", callback_data="clear_cart")
-    kb.button(text="⬅️ Главное меню", callback_data="back_to_main")
-    kb.adjust(2, 1, 1)
+
+    if cart:
+        # Кнопки управления количеством
+        for iid, qty in cart.items():
+            name = id_to_item[iid]["name"]
+            kb.button(text=f"➕ {name}", callback_data=f"inc_{iid}")
+            kb.button(text=f"➖ {name}", callback_data=f"dec_{iid}")
+        kb.adjust(2)
+
+        # Действия
+        kb.button(text="✅ Оформить заказ", callback_data="checkout")
+        kb.button(text="🗑 Очистить корзину", callback_data="clear_cart")
+        kb.button(text="⬅️ Главное меню", callback_data="back_to_main")
+        kb.adjust(2, 1)
+    else:
+        kb.button(text="📂 Категории", callback_data="menu_categories")
+        kb.button(text="⬅️ Главное меню", callback_data="back_to_main")
+        kb.adjust(1)
+
     await callback.message.edit_text(text, reply_markup=kb.as_markup())
 
 # Увеличить товар
@@ -161,7 +175,8 @@ async def show_cart(callback: types.CallbackQuery):
 async def inc_item(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     item_id = int(callback.data.split("_")[1])
-    carts[user_id][item_id] += 1
+    carts.setdefault(user_id, {})
+    carts[user_id][item_id] = carts[user_id].get(item_id, 0) + 1
     await show_cart(callback)
 
 # Уменьшить товар
@@ -169,10 +184,11 @@ async def inc_item(callback: types.CallbackQuery):
 async def dec_item(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     item_id = int(callback.data.split("_")[1])
-    if carts[user_id][item_id] > 1:
-        carts[user_id][item_id] -= 1
-    else:
-        del carts[user_id][item_id]
+    if user_id in carts and item_id in carts[user_id]:
+        if carts[user_id][item_id] > 1:
+            carts[user_id][item_id] -= 1
+        else:
+            del carts[user_id][item_id]
     await show_cart(callback)
 
 # Очистить корзину
@@ -182,7 +198,91 @@ async def clear_cart(callback: types.CallbackQuery):
     await callback.answer("Корзина очищена!")
     await show_cart(callback)
 
-# TODO: тут же будет checkout → оформление заказа (с подтверждением)
+# ====== ОФОРМЛЕНИЕ ЗАКАЗА ======
+
+# Старт оформления
+@dp.callback_query(lambda c: c.data == "checkout")
+async def checkout(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    if not carts.get(user_id) or sum(carts[user_id].values()) == 0:
+        await callback.message.answer("Ваша корзина пуста! Добавьте товары перед оформлением заказа.")
+        await callback.answer()
+        return
+    orders_data[user_id] = {"step": "name"}  # state-машина
+    await callback.message.answer("Введите ваше Имя и @ник:")
+    await callback.answer()
+
+# Обработка шагов: имя -> телефон -> период -> обзор/подтверждение
+@dp.message()
+async def handle_order_steps(message: types.Message):
+    user_id = message.from_user.id
+    if user_id not in orders_data:
+        return
+
+    step = orders_data[user_id].get("step")
+
+    if step == "name":
+        orders_data[user_id]["name"] = message.text.strip()
+        orders_data[user_id]["step"] = "phone"
+        await message.answer("Введите ваш контактный телефон:")
+
+    elif step == "phone":
+        orders_data[user_id]["phone"] = message.text.strip()
+        orders_data[user_id]["step"] = "rental_period"
+        await message.answer("Введите период аренды текстом (например: с 25.08 по 28.08):")
+
+    elif step == "rental_period":
+        orders_data[user_id]["rental_period"] = message.text.strip()
+        # Формируем обзор (чек) + кнопки Подтвердить/Отмена
+        cart_text = get_cart_text(user_id)
+        order_summary = (
+            f"📦 Проверьте заказ:\n\n{cart_text}\n\n"
+            f"Имя/ник: {orders_data[user_id]['name']}\n"
+            f"Телефон: {orders_data[user_id]['phone']}\n"
+            f"Аренда: {orders_data[user_id]['rental_period']}"
+        )
+        orders_data[user_id]["step"] = "review"
+        kb = InlineKeyboardBuilder()
+        kb.button(text="✅ Подтвердить", callback_data="confirm_order")
+        kb.button(text="❌ Отмена", callback_data="cancel_order")
+        kb.adjust(2)
+        await message.answer(order_summary, reply_markup=kb.as_markup())
+
+# Подтверждение заказа
+@dp.callback_query(lambda c: c.data == "confirm_order")
+async def confirm_order(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    data = orders_data.get(user_id)
+    if not data or data.get("step") != "review":
+        await callback.answer("Действие недоступно.", show_alert=True)
+        return
+
+    # Сформируем финальный текст (на случай, если корзина изменилась)
+    cart_text = get_cart_text(user_id)
+    final_text = (
+        f"📦 Новый заказ:\n\n{cart_text}\n\n"
+        f"Имя/ник: {data['name']}\n"
+        f"Телефон: {data['phone']}\n"
+        f"Аренда: {data['rental_period']}"
+    )
+    # Сообщение админу
+    await bot.send_message(ADMIN_ID, final_text)
+
+    # Подтверждение пользователю
+    await callback.message.edit_text("Спасибо! Заказ отправлен админу. Ожидайте подтверждения. ✅")
+
+    # Очистка
+    carts[user_id] = {}
+    orders_data.pop(user_id, None)
+    await callback.answer()
+
+# Отмена заказа (возврат без очистки корзины)
+@dp.callback_query(lambda c: c.data == "cancel_order")
+async def cancel_order(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    orders_data.pop(user_id, None)
+    await callback.message.edit_text("Оформление отменено. Вы можете продолжить выбирать товары.", reply_markup=main_menu(user_id))
+    await callback.answer()
 
 # Запуск
 async def main():
@@ -191,4 +291,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
