@@ -9,5 +9,5 @@ def register_handlers(dp):
     register_admin_handlers(dp)
     register_history_handlers(dp)
 
-    # и только потом fallback (/start и универсальный ответ)
+    # и только потом /start + fallback
     register_start_handlers(dp)
