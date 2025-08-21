@@ -14,7 +14,7 @@ def register_start_handlers(dp):
             reply_markup=main_menu(message.from_user.id)
         )
 
-    # fallback — в самый конец, чтобы не ломал кнопки
+    # fallback — только если пользователь не в процессе заказа
     @dp.message(lambda m: m.text and not m.text.startswith("/") and m.from_user.id not in orders_data)
     async def fallback(message: types.Message):
         await message.answer(
