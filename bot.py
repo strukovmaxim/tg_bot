@@ -73,4 +73,122 @@ def get_cart_text(user_id):
                 qty = cart[item_id]
                 price = item["price"] * qty
                 text += f"- {item['name']} × {qty} — {price}₽\n"
-                tota
+                total += price
+    text += f"\nИтого: {total}₽"
+    return text
+
+# Главное меню
+def main_menu(user_id):
+    items, price = get_cart_summary(user_id)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📂 Категории", callback_data="menu_categories")
+    kb.button(text=f"🛒 Корзина ({items} | {price}₽)", callback_data="show_cart")
+    kb.button(text="👤 Связь с админом", callback_data="contact_admin")
+    kb.adjust(1)
+    return kb.as_markup()
+
+# /start
+@dp.message(Command("start"))
+async def start(message: types.Message):
+    text = (
+        "Привет! 👋\n\n"
+        "Это бот для аренды техники.\n"
+        "Выберите категорию, соберите корзину и оформите заказ."
+    )
+    await message.answer(text, reply_markup=main_menu(message.from_user.id))
+
+# Связь с админом
+@dp.callback_query(lambda c: c.data == "contact_admin")
+async def contact_admin(callback: types.CallbackQuery):
+    await callback.message.answer("Напишите админу: @maximstrukov")
+    await callback.answer()
+
+# Категории
+@dp.callback_query(lambda c: c.data == "menu_categories")
+async def show_categories(callback: types.CallbackQuery):
+    kb = InlineKeyboardBuilder()
+    for category in catalog.keys():
+        kb.button(text=category, callback_data=f"cat_{category}")
+    kb.button(text="⬅️ Главное меню", callback_data="back_to_main")
+    kb.adjust(1)
+    await callback.message.edit_text("Выберите категорию:", reply_markup=kb.as_markup())
+
+# Назад в меню
+@dp.callback_query(lambda c: c.data == "back_to_main")
+async def back_to_main(callback: types.CallbackQuery):
+    await callback.message.edit_text("Главное меню:", reply_markup=main_menu(callback.from_user.id))
+
+# Товары в категории
+@dp.callback_query(lambda c: c.data.startswith("cat_"))
+async def show_category(callback: types.CallbackQuery):
+    category = callback.data.replace("cat_", "")
+    kb = InlineKeyboardBuilder()
+    for item_id, item in catalog[category].items():
+        kb.button(text=f"{item['name']} ({item['price']}₽)", callback_data=f"add_{item_id}")
+    kb.button(text="⬅️ Назад", callback_data="menu_categories")
+    kb.adjust(1)
+    await callback.message.edit_text(f"Категория: {category}", reply_markup=kb.as_markup())
+
+# Добавить в корзину
+@dp.callback_query(lambda c: c.data.startswith("add_"))
+async def add_to_cart(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    item_id = int(callback.data.split("_")[1])
+    carts.setdefault(user_id, {})
+    carts[user_id][item_id] = carts[user_id].get(item_id, 0) + 1
+    await callback.answer("Добавлено в корзину!")
+    await callback.message.answer("✅ Товар добавлен.", reply_markup=main_menu(user_id))
+
+# Показ корзины
+@dp.callback_query(lambda c: c.data == "show_cart")
+async def show_cart(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    text = get_cart_text(user_id)
+    kb = InlineKeyboardBuilder()
+    cart = carts.get(user_id, {})
+    for item_id, qty in cart.items():
+        # кнопки ➕ ➖
+        kb.button(text=f"➕ {catalog[next(k for k,v in catalog.items() if item_id in v)][item_id]['name']}", callback_data=f"inc_{item_id}")
+        kb.button(text=f"➖", callback_data=f"dec_{item_id}")
+    kb.button(text="✅ Оформить заказ", callback_data="checkout")
+    kb.button(text="🗑 Очистить корзину", callback_data="clear_cart")
+    kb.button(text="⬅️ Главное меню", callback_data="back_to_main")
+    kb.adjust(2, 1, 1)
+    await callback.message.edit_text(text, reply_markup=kb.as_markup())
+
+# Увеличить товар
+@dp.callback_query(lambda c: c.data.startswith("inc_"))
+async def inc_item(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    item_id = int(callback.data.split("_")[1])
+    carts[user_id][item_id] += 1
+    await show_cart(callback)
+
+# Уменьшить товар
+@dp.callback_query(lambda c: c.data.startswith("dec_"))
+async def dec_item(callback: types.CallbackQuery):
+    user_id = callback.from_user.id
+    item_id = int(callback.data.split("_")[1])
+    if carts[user_id][item_id] > 1:
+        carts[user_id][item_id] -= 1
+    else:
+        del carts[user_id][item_id]
+    await show_cart(callback)
+
+# Очистить корзину
+@dp.callback_query(lambda c: c.data == "clear_cart")
+async def clear_cart(callback: types.CallbackQuery):
+    carts[callback.from_user.id] = {}
+    await callback.answer("Корзина очищена!")
+    await show_cart(callback)
+
+# TODO: тут же будет checkout → оформление заказа (с подтверждением)
+
+# Запуск
+async def main():
+    print("[LOG] Бот запущен...")
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
