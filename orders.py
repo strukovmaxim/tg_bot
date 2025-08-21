@@ -1,7 +1,4 @@
 from aiogram import types
-from aiogram.filters import StateFilter
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import Bot
 
@@ -9,20 +6,12 @@ from data import carts, id_to_item, orders_data, all_orders
 from cart import get_cart_text, cart_totals
 from config import ADMIN_ID
 
-# Состояния для оформления заказа
-class OrderStates(StatesGroup):
-    name = State()
-    phone = State()
-    rental_period = State()
-    comment = State()
-    review = State()
-
 
 def register_order_handlers(dp):
 
     # checkout из корзины
     @dp.callback_query(lambda c: c.data == "checkout")
-    async def checkout(callback: types.CallbackQuery, state: FSMContext):
+    async def checkout(callback: types.CallbackQuery):
         user_id = callback.from_user.id
         if not carts.get(user_id):
             await callback.answer("Корзина пуста!", show_alert=True)
@@ -40,7 +29,7 @@ def register_order_handlers(dp):
             orders_data[user_id] = {"step": "name"}
         await callback.answer()
 
-    # ввод данных по шагам
+    # ввод имени
     @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "name")
     async def process_name(message: types.Message):
         user_id = message.from_user.id
@@ -48,6 +37,7 @@ def register_order_handlers(dp):
         orders_data[user_id]["step"] = "phone"
         await message.answer("Введите ваш номер телефона:")
 
+    # ввод телефона
     @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "phone")
     async def process_phone(message: types.Message):
         user_id = message.from_user.id
@@ -55,6 +45,7 @@ def register_order_handlers(dp):
         orders_data[user_id]["step"] = "rental_period"
         await message.answer("Введите период аренды с временем (например: 01.09 10:00 — 03.09 19:00):")
 
+    # ввод периода
     @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "rental_period")
     async def process_period(message: types.Message):
         user_id = message.from_user.id
@@ -65,6 +56,7 @@ def register_order_handlers(dp):
             "Если ничего не нужно — напишите «-»."
         )
 
+    # ввод комментария и финальный чек
     @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "comment")
     async def process_comment(message: types.Message):
         user_id = message.from_user.id
@@ -72,14 +64,18 @@ def register_order_handlers(dp):
         orders_data[user_id]["step"] = "review"
 
         nal, beznal = cart_totals(carts[user_id])
+        cart_text = get_cart_text(user_id)
+
         text = (
-            f"📦 Ваш заказ:\n\n{get_cart_text(user_id)}\n\n"
+            f"📦 Ваш заказ:\n\n"
+            f"{cart_text}\n\n"
             f"Имя: {orders_data[user_id]['name']}\n"
             f"Телефон: {orders_data[user_id]['phone']}\n"
             f"🕒 Период: {orders_data[user_id]['rental_period']}\n"
             f"📝 Комментарий: {orders_data[user_id]['comment']}\n\n"
             f"Итого: 💰 {nal}₽ | 💳 {beznal}₽"
         )
+
         kb = InlineKeyboardBuilder()
         kb.button(text="✅ Подтвердить заказ", callback_data="confirm_order")
         kb.button(text="❌ Отменить", callback_data="cancel_order")
