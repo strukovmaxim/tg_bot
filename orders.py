@@ -1,6 +1,7 @@
 from aiogram import types
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import Bot
+from datetime import datetime
 
 from data import carts, id_to_item, orders_data, all_orders
 from cart import get_cart_text, cart_totals
@@ -99,18 +100,22 @@ def register_order_handlers(dp):
             "phone": data.get("phone"),
             "period": data.get("rental_period"),
             "comment": data.get("comment"),
-            "status": "pending"
+            "status": "pending",
+            "created_at": datetime.now().strftime("%d.%m.%Y %H:%M")
         }
         all_orders.append(order)
 
-        # текст для админа
+        # текст корзины
         nal, beznal = cart_totals(order["items"])
+        cart_text = get_cart_text(uid)
+
+        # текст для админа
         admin_text = (
             f"📦 Новый заказ от {order['name']} (id {uid})\n"
             f"📞 {order['phone']}\n"
             f"🕒 Период: {order['period']}\n"
             f"📝 Комментарий: {order['comment']}\n\n"
-            f"{get_cart_text(uid)}\n\n"
+            f"{cart_text}\n\n"
             f"Итого: 💰 {nal}₽ | 💳 {beznal}₽"
         )
 
@@ -119,13 +124,22 @@ def register_order_handlers(dp):
         kb.button(text="✅ Подтвердить", callback_data=f"admin_confirm_{uid}")
         kb.button(text="❌ Отклонить", callback_data=f"admin_decline_{uid}")
         kb.adjust(2)
-
         await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb.as_markup())
 
-        # сообщение пользователю
-        await callback.message.edit_text("Спасибо! Заказ отправлен админу. ✅")
+        # сообщение пользователю — теперь с полным заказом
+        user_text = (
+            f"Спасибо! Заказ отправлен админу ✅\n\n"
+            f"📦 Ваш заказ:\n\n"
+            f"{cart_text}\n\n"
+            f"Имя: {order['name']}\n"
+            f"Телефон: {order['phone']}\n"
+            f"🕒 Период: {order['period']}\n"
+            f"📝 Комментарий: {order['comment']}\n\n"
+            f"Итого: 💰 {nal}₽ | 💳 {beznal}₽"
+        )
+        await callback.message.edit_text(user_text)
 
-        # очистка
+        # очистка корзины
         carts[uid] = {}
         orders_data.pop(uid, None)
         await callback.answer()
