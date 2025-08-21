@@ -16,7 +16,7 @@ dp = Dispatcher()
 catalog = {
     "Камеры": {
         1: {"name": "Canon C70", "price": 6000, "desc": "Кинокамера 4K, Super35, Dual Gain Output"},
-        2: {"name": "Canon C80", "price": 8000, "desc": "Кинокамера с 6K сенсором и улучшенным автофокусом"},
+        2: {"name": "Canon C80", "price": 8000, "desc": "Кинокамера с 6K сенсором, Fullframe"},
     },
     "Объективы / Оптика": {
         3: {"name": "Laowa Ranger 17-50", "price": 4000, "desc": "Кино-зум для Super35"},
@@ -27,19 +27,17 @@ catalog = {
         6: {"name": "Hollyland Mars M1", "price": 2000, "desc": "Монитор-передатчик видео"},
         7: {"name": "Hollyland Solidcom 4S", "price": 4000, "desc": "Беспроводная гарнитура для команды"},
     },
-    "Аксессуары / Монтаж": {
+    "Аксессуары": {
         8: {"name": "Tilta Nano Focus II", "price": 2300, "desc": "Follow Focus система"},
-        9: {"name": "Tilta Mirage", "price": 1000, "desc": "Матбокс с вари-ND фильтром"},
+        9: {"name": "Tilta Mirage", "price": 1000, "desc": "Компендиум 95мм"},
         10: {"name": "Площадка V-mount", "price": 1000, "desc": "Крепление батарей"},
-        11: {"name": "Cine saddle", "price": 500, "desc": "Мягкая опора для камеры"},
+        11: {"name": "Cine saddle", "price": 500, "desc": "Операторский мешок"},
         12: {"name": "V-mount 99", "price": 500, "desc": "Аккумулятор 99Wh"},
         13: {"name": "Телега OnStage", "price": 1000, "desc": "Тележка для оборудования"},
-        14: {"name": "Грипня и железки", "price": 1000, "desc": "Разное оборудование для монтажа"},
-        15: {"name": "Штатив", "price": 3000, "desc": "Профессиональный штатив"},
         16: {"name": "Сумка операторская", "price": 700, "desc": "Сумка для техники"},
     },
     "Флешки / Аккумуляторы": {
-        17: {"name": "Флешки 256гб", "price": 500, "desc": "Карты памяти 256GB"},
+        17: {"name": "Флешка 256гб", "price": 500, "desc": "Карты памяти 256GB"},
         18: {"name": "BP-30a", "price": 500, "desc": "Аккумулятор BP-30a"},
         19: {"name": "NP-F970", "price": 500, "desc": "Аккумулятор NP-F970"},
     },
