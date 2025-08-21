@@ -5,8 +5,8 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-API_TOKEN = os.environ["API_TOKEN"]
-ADMIN_ID = int(os.environ["ADMIN_ID"])
+API_TOKEN = "7638897879:AAGhxCf1nBPNBmVWiXCKjvqdAJWBsj-Jc0k"
+ADMIN_ID = 136480596  # твой Telegram ID
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
