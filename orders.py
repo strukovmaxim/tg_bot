@@ -84,7 +84,10 @@ def register_order_handlers(dp):
     @dp.message(lambda m: orders_data.get(m.from_user.id, {}).get("step") == "comment")
     async def process_comment(message: types.Message):
         user_id = message.from_user.id
-        orders_data[user_id]["comment"] = message.text.strip()
+        comment = message.text.strip()
+        if comment == "-":
+            comment = "нет"
+        orders_data[user_id]["comment"] = comment
         orders_data[user_id]["step"] = "review"
 
         nal, beznal = cart_totals(carts[user_id])
