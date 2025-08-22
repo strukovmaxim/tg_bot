@@ -3,7 +3,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram import Bot
 from datetime import datetime
 
-from data import carts, orders_data, all_orders
+from data import carts, id_to_item, orders_data, all_orders
 from cart import get_cart_text, cart_totals
 from config import ADMIN_ID
 
@@ -31,7 +31,7 @@ def register_order_handlers(dp):
         await callback.answer()
 
     # ввод имени
-    @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "name")
+    @dp.message(lambda m: orders_data.get(m.from_user.id, {}).get("step") == "name")
     async def process_name(message: types.Message):
         user_id = message.from_user.id
         orders_data[user_id]["name"] = message.text.strip()
@@ -39,7 +39,7 @@ def register_order_handlers(dp):
         await message.answer("Введите ваш номер телефона:")
 
     # ввод телефона
-    @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "phone")
+    @dp.message(lambda m: orders_data.get(m.from_user.id, {}).get("step") == "phone")
     async def process_phone(message: types.Message):
         user_id = message.from_user.id
         orders_data[user_id]["phone"] = message.text.strip()
@@ -47,18 +47,18 @@ def register_order_handlers(dp):
         await message.answer("Введите период аренды с временем (например: 01.09 10:00 — 03.09 19:00):")
 
     # ввод периода
-    @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "rental_period")
+    @dp.message(lambda m: orders_data.get(m.from_user.id, {}).get("step") == "rental_period")
     async def process_period(message: types.Message):
         user_id = message.from_user.id
         orders_data[user_id]["rental_period"] = message.text.strip()
         orders_data[user_id]["step"] = "comment"
         await message.answer(
-            "Добавьте комментарий к заказу (например: нужна доставка, нужен механик, точка встречи). "
+            "Добавьте комментарий к заказу (например: нужна доставка, механик, точка встречи). "
             "Если ничего не нужно — напишите «-»."
         )
 
     # ввод комментария и финальный чек
-    @dp.message(lambda m: m.from_user.id in orders_data and orders_data[m.from_user.id]["step"] == "comment")
+    @dp.message(lambda m: orders_data.get(m.from_user.id, {}).get("step") == "comment")
     async def process_comment(message: types.Message):
         user_id = message.from_user.id
         orders_data[user_id]["comment"] = message.text.strip()
@@ -126,7 +126,7 @@ def register_order_handlers(dp):
         kb.adjust(2)
         await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb.as_markup())
 
-        # сообщение пользователю — полный чек
+        # сообщение пользователю — теперь с полным заказом
         user_text = (
             f"Спасибо! Заказ отправлен админу ✅\n\n"
             f"📦 Ваш заказ:\n\n"
@@ -139,7 +139,7 @@ def register_order_handlers(dp):
         )
         await callback.message.edit_text(user_text)
 
-        # очистка корзины, но контакты оставляем
+        # очистка корзины, но контакты остаются
         carts[uid] = {}
         if uid in orders_data:
             orders_data[uid].pop("step", None)
