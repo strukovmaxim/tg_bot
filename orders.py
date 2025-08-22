@@ -235,7 +235,7 @@ def register_order_handlers(dp):
 
         if not user_orders:
             kb = InlineKeyboardBuilder()
-            kb.button(text="🏠 В главное меню", callback_data="to_main")
+            kb.button(text="🏠 В главное меню", callback_data="back_to_main")  # <-- фикс
             kb.adjust(1)
             await callback.message.answer("📭 У вас пока нет заказов.", reply_markup=kb.as_markup())
             await callback.answer()
@@ -257,7 +257,7 @@ def register_order_handlers(dp):
 
         # добавляем кнопку выхода
         kb = InlineKeyboardBuilder()
-        kb.button(text="🏠 В главное меню", callback_data="to_main")
+        kb.button(text="🏠 В главное меню", callback_data="back_to_main")  # <-- фикс
         kb.adjust(1)
 
         await callback.message.answer(text, reply_markup=kb.as_markup())
