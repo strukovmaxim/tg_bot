@@ -1,7 +1,7 @@
 from aiogram import types
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 from data import all_orders
 from config import ADMIN_ID
+from cart import get_cart_text, cart_totals
 
 
 def register_admin_handlers(dp):
@@ -16,8 +16,26 @@ def register_admin_handlers(dp):
         for order in all_orders:
             if order["user_id"] == uid:
                 order["status"] = "✅ Подтверждён"
+
+                # корзина
+                cart_text = get_cart_text(uid, order["items"])
+                nal, beznal = cart_totals(order["items"])
+
+                # сообщение админу
                 await callback.message.edit_text(callback.message.text + "\n\n✅ Заказ подтверждён")
-                await callback.bot.send_message(uid, "Ваш заказ ✅ подтверждён админом!")
+
+                # сообщение пользователю
+                user_text = (
+                    f"✅ Ваш заказ подтверждён админом!\n\n"
+                    f"📦 Ваш заказ:\n\n"
+                    f"{cart_text}\n\n"
+                    f"Имя: {order['name']}\n"
+                    f"Телефон: {order['phone']}\n"
+                    f"🕒 Период: {order['period']}\n"
+                    f"📝 Комментарий: {order['comment']}\n\n"
+                    f"Итого: 💰 {nal}₽ | 💳 {beznal}₽"
+                )
+                await callback.bot.send_message(uid, user_text)
                 break
 
         await callback.answer()
@@ -33,8 +51,26 @@ def register_admin_handlers(dp):
         for order in all_orders:
             if order["user_id"] == uid:
                 order["status"] = "❌ Отклонён"
+
+                # корзина
+                cart_text = get_cart_text(uid, order["items"])
+                nal, beznal = cart_totals(order["items"])
+
+                # сообщение админу
                 await callback.message.edit_text(callback.message.text + "\n\n❌ Заказ отклонён")
-                await callback.bot.send_message(uid, "Ваш заказ ❌ был отклонён админом.")
+
+                # сообщение пользователю
+                user_text = (
+                    f"❌ К сожалению, ваш заказ был отклонён админом.\n\n"
+                    f"📦 Заказ:\n\n"
+                    f"{cart_text}\n\n"
+                    f"Имя: {order['name']}\n"
+                    f"Телефон: {order['phone']}\n"
+                    f"🕒 Период: {order['period']}\n"
+                    f"📝 Комментарий: {order['comment']}\n\n"
+                    f"Итого: 💰 {nal}₽ | 💳 {beznal}₽"
+                )
+                await callback.bot.send_message(uid, user_text)
                 break
 
         await callback.answer()
