@@ -57,7 +57,11 @@ def register_order_handlers(dp):
     @dp.message(lambda m: orders_data.get(m.from_user.id, {}).get("step") == "name")
     async def process_name(message: types.Message):
         user_id = message.from_user.id
-        orders_data[user_id]["name"] = message.text.strip()
+        name = message.text.strip()
+        if not name:
+            await message.answer("Имя не может быть пустым. Попробуйте ещё раз:")
+            return
+        orders_data[user_id]["name"] = name
         orders_data[user_id]["step"] = "phone"
         await message.answer("Введите ваш номер телефона:")
 
@@ -65,7 +69,11 @@ def register_order_handlers(dp):
     @dp.message(lambda m: orders_data.get(m.from_user.id, {}).get("step") == "phone")
     async def process_phone(message: types.Message):
         user_id = message.from_user.id
-        orders_data[user_id]["phone"] = message.text.strip()
+        phone = message.text.strip()
+        if not phone:
+            await message.answer("Телефон не может быть пустым. Попробуйте ещё раз:")
+            return
+        orders_data[user_id]["phone"] = phone
         orders_data[user_id]["step"] = "rental_period"
         await message.answer("Введите период аренды с временем (например: 01.09 10:00 — 03.09 19:00):")
 
@@ -73,7 +81,11 @@ def register_order_handlers(dp):
     @dp.message(lambda m: orders_data.get(m.from_user.id, {}).get("step") == "rental_period")
     async def process_period(message: types.Message):
         user_id = message.from_user.id
-        orders_data[user_id]["rental_period"] = message.text.strip()
+        period = message.text.strip()
+        if not period:
+            await message.answer("Период аренды не может быть пустым. Попробуйте ещё раз:")
+            return
+        orders_data[user_id]["rental_period"] = period
         orders_data[user_id]["step"] = "comment"
         await message.answer(
             "Добавьте комментарий к заказу (например: нужна доставка, механик, точка встречи). "
@@ -109,7 +121,7 @@ def register_order_handlers(dp):
         kb.adjust(1)
         await message.answer(text, reply_markup=kb.as_markup())
 
-    # подтверждение заказа
+    # подтверждение заказа пользователем
     @dp.callback_query(lambda c: c.data == "confirm_order")
     async def confirm_order(callback: types.CallbackQuery, bot: Bot):
         uid = callback.from_user.id
@@ -174,7 +186,7 @@ def register_order_handlers(dp):
 
         await callback.answer()
 
-    # отмена заказа
+    # отмена заказа пользователем
     @dp.callback_query(lambda c: c.data == "cancel_order")
     async def cancel_order(callback: types.CallbackQuery):
         uid = callback.from_user.id
@@ -184,3 +196,49 @@ def register_order_handlers(dp):
             orders_data[uid].pop("comment", None)
         await callback.message.edit_text("Заказ отменён ❌")
         await callback.answer()
+
+    # админ подтверждает заказ
+    @dp.callback_query(lambda c: c.data.startswith("admin_confirm_"))
+    async def admin_confirm(callback: types.CallbackQuery, bot: Bot):
+        uid = int(callback.data.split("_")[-1])
+
+        order = next((o for o in all_orders if o["user_id"] == uid and o["status"] == "⏳ В обработке"), None)
+        if not order:
+            await callback.answer("Заказ не найден или уже обработан.", show_alert=True)
+            return
+
+        order["status"] = "✅ Подтверждён"
+
+        # уведомляем пользователя
+        nal, beznal = cart_totals(order["items"])
+        cart_text = get_cart_text(uid, order["items"])
+        text_user = (
+            f"🎉 Ваш заказ подтверждён!\n\n"
+            f"{cart_text}\n\n"
+            f"Имя: {order['name']}\n"
+            f"Телефон: {order['phone']}\n"
+            f"🕒 Период: {order['period']}\n"
+            f"📝 Комментарий: {order['comment']}\n\n"
+            f"Итого: 💰 {nal}₽ | 💳 {beznal}₽"
+        )
+        await bot.send_message(uid, text_user)
+
+        await callback.message.edit_text(f"✅ Заказ от {order['name']} подтверждён админом")
+        await callback.answer("Заказ подтверждён!")
+
+    # админ отклоняет заказ
+    @dp.callback_query(lambda c: c.data.startswith("admin_decline_"))
+    async def admin_decline(callback: types.CallbackQuery, bot: Bot):
+        uid = int(callback.data.split("_")[-1])
+
+        order = next((o for o in all_orders if o["user_id"] == uid and o["status"] == "⏳ В обработке"), None)
+        if not order:
+            await callback.answer("Заказ не найден или уже обработан.", show_alert=True)
+            return
+
+        order["status"] = "❌ Отклонён"
+
+        await bot.send_message(uid, "❌ К сожалению, ваш заказ был отклонён админом.")
+
+        await callback.message.edit_text(f"❌ Заказ от {order['name']} отклонён админом")
+        await callback.answer("Заказ отклонён!")
