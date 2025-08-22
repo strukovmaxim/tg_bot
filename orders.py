@@ -19,15 +19,38 @@ def register_order_handlers(dp):
             return
 
         if user_id in orders_data and "name" in orders_data[user_id] and "phone" in orders_data[user_id]:
-            # используем сохранённые контакты
+            # спрашиваем использовать старые данные или ввести новые
+            kb = InlineKeyboardBuilder()
+            kb.button(text="✅ Использовать старые", callback_data="use_saved_contacts")
+            kb.button(text="✏️ Ввести новые", callback_data="enter_new_contacts")
+            kb.adjust(1)
             await callback.message.answer(
-                "Введите период аренды с временем (например: 01.09 10:00 — 03.09 19:00):"
+                f"📇 Мы нашли ваши данные:\n\n"
+                f"Имя: {orders_data[user_id]['name']}\n"
+                f"Телефон: {orders_data[user_id]['phone']}\n\n"
+                "Хотите использовать их снова или изменить?",
+                reply_markup=kb.as_markup()
             )
-            orders_data[user_id]["step"] = "rental_period"
         else:
-            # новые контакты
+            # если данных нет — спрашиваем имя
             await callback.message.answer("Введите ваше Имя и Фамилию, а так же ваш телеграм для связи:")
             orders_data[user_id] = {"step": "name"}
+        await callback.answer()
+
+    # использовать сохранённые данные
+    @dp.callback_query(lambda c: c.data == "use_saved_contacts")
+    async def use_saved_contacts(callback: types.CallbackQuery):
+        uid = callback.from_user.id
+        orders_data[uid]["step"] = "rental_period"
+        await callback.message.answer("Введите период аренды с временем (например: 01.09 10:00 — 03.09 19:00):")
+        await callback.answer()
+
+    # ввести новые данные
+    @dp.callback_query(lambda c: c.data == "enter_new_contacts")
+    async def enter_new_contacts(callback: types.CallbackQuery):
+        uid = callback.from_user.id
+        orders_data[uid] = {"step": "name"}  # сбрасываем старые контакты
+        await callback.message.answer("Введите ваше Имя и Фамилию, а так же ваш телеграм для связи:")
         await callback.answer()
 
     # ввод имени
@@ -126,7 +149,7 @@ def register_order_handlers(dp):
         kb.adjust(2)
         await bot.send_message(ADMIN_ID, admin_text, reply_markup=kb.as_markup())
 
-        # сообщение пользователю — теперь с полным заказом
+        # сообщение пользователю
         user_text = (
             f"Спасибо! Заказ отправлен админу ✅\n\n"
             f"📦 Ваш заказ:\n\n"
